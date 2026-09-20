@@ -5,7 +5,32 @@
  *
  */
 
+const mongoose = require("mongoose");
+
 const Post = require("../models/post.model");
+const { validateEncodedImage } = require("../utils/imageUpload");
+
+// SECURITY (VULN-08): bound every piece of user-authored text. Unbounded
+// fields let a single request write an arbitrarily large document, which is
+// both a storage-exhaustion vector and a way to make every subsequent feed
+// response enormous for all other users.
+const TITLE_MAX_LENGTH = 150;
+const BODY_MAX_LENGTH = 2200; // matches Instagram's own caption limit
+const COMMENT_MAX_LENGTH = 1000;
+
+const validateText = (value, label, maxLength) => {
+	if (typeof value !== "string") return `${label} must be a string.`;
+	const trimmed = value.trim();
+	if (trimmed.length === 0) return `${label} is required.`;
+	if (trimmed.length > maxLength) return `${label} must be at most ${maxLength} characters.`;
+	return null;
+};
+
+// SECURITY (VULN-08): reject malformed ObjectIds before they reach Mongoose.
+// An invalid id otherwise produces a CastError whose message was echoed to
+// the caller (see VULN-09) and, in the callback-style handlers below, was
+// easy to mishandle.
+const isValidObjectId = (id) => typeof id === "string" && mongoose.Types.ObjectId.isValid(id);
 
 exports.allPost = (req, res) => {
 	Post.find()
@@ -87,34 +112,51 @@ exports.myPost = (req, res) => {
 
 exports.createPost = (req, res) => {
 	const { title, body, photoEncode, photoType } = req.body;
-	if (!title || !body || !photoEncode) {
-		return res.json({
-			error: "Please submit all the required fields.",
-		});
+
+	// SECURITY (VULN-08): validate the text fields as strings and bound their
+	// length. Previously any type and any length was accepted and written
+	// straight to the database.
+	const titleError = validateText(title, "Title", TITLE_MAX_LENGTH);
+	if (titleError) return res.status(400).json({ error: titleError });
+
+	const bodyError = validateText(body, "Body", BODY_MAX_LENGTH);
+	if (bodyError) return res.status(400).json({ error: bodyError });
+
+	// SECURITY (VULN-08): the image is sniffed from its own bytes; the
+	// client-declared type is not trusted. This also fixes the ReferenceError
+	// below, where the original code read an undeclared `photoEncoded`
+	// instead of the destructured `photoEncode` and so threw on every call.
+	const image = validateEncodedImage(photoEncode, photoType);
+	if (!image.ok) {
+		return res.status(400).json({ error: image.error });
 	}
+
 	const post = new Post({
-		Title: title,
-		Body: body,
-		PostedBy: req.user,
+		Title: title.trim(),
+		Body: body.trim(),
+		// Bind the post to the authenticated user's id only. Assigning the
+		// whole `req.user` document here relied on Mongoose casting and
+		// risked persisting fields that were never meant to be embedded.
+		PostedBy: req.user._id,
+		Photo: image.buffer,
+		PhotoType: image.mimeType,
 	});
-
-	// savePhoto(post, photoEncode, photoType);
-
-	if (photoEncoded != null) {
-		post.Photo = new Buffer.from(photoEncoded, "base64");
-		post.PhotoType = photoType;
-	}
 
 	post.save()
 		.then((result) => {
-			res.json({ message: "Post created successfully" });
+			res.status(201).json({ message: "Post created successfully", _id: result._id });
 		})
 		.catch((err) => {
-			console.log(err);
+			console.error("[createPost]", err);
+			return res.status(500).json({ error: "Unable to create the post." });
 		});
 };
 
 exports.like = (req, res) => {
+	// SECURITY (VULN-08): reject malformed ids before they reach Mongoose.
+	if (!isValidObjectId(req.body.postId)) {
+		return res.status(400).json({ error: "A valid postId is required." });
+	}
 	Post.findByIdAndUpdate(
 		req.body.postId,
 		{
@@ -142,6 +184,10 @@ exports.like = (req, res) => {
 };
 
 exports.unlike = (req, res) => {
+	// SECURITY (VULN-08): reject malformed ids before they reach Mongoose.
+	if (!isValidObjectId(req.body.postId)) {
+		return res.status(400).json({ error: "A valid postId is required." });
+	}
 	Post.findByIdAndUpdate(
 		req.body.postId,
 		{
@@ -170,7 +216,17 @@ exports.unlike = (req, res) => {
 };
 
 exports.comment = (req, res) => {
-	const comment = { Text: req.body.text, PostedBy: req.user._id };
+	// SECURITY (VULN-08): validate the comment text and the target post id.
+	// The original handler pushed `req.body.text` of any type and any length
+	// into the Comments array.
+	const textError = validateText(req.body.text, "Comment", COMMENT_MAX_LENGTH);
+	if (textError) return res.status(400).json({ error: textError });
+
+	if (!isValidObjectId(req.body.postId)) {
+		return res.status(400).json({ error: "A valid postId is required." });
+	}
+
+	const comment = { Text: req.body.text.trim(), PostedBy: req.user._id };
 	Post.findByIdAndUpdate(
 		req.body.postId,
 		{

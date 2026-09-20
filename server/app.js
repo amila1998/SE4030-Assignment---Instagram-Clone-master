@@ -51,8 +51,13 @@ app.use(
 );
 
 // Parsers
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true }));
+// SECURITY (VULN-08): the body limit was 50 MB, so any unauthenticated
+// caller could make the server buffer 50 MB of JSON per request - trivial
+// memory-exhaustion DoS. Images are capped at 5 MB decoded (see
+// utils/imageUpload.js); 8 MB here leaves room for base64's ~33% inflation
+// plus the surrounding JSON fields.
+app.use(express.json({ limit: "8mb" }));
+app.use(express.urlencoded({ extended: true, limit: "8mb" }));
 
 // SECURITY (VULN-03): strip any key beginning with "$" or containing "."
 // from req.body / req.params / req.query before it can reach a Mongoose
