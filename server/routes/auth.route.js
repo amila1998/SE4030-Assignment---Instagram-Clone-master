@@ -7,16 +7,20 @@
 
 const controller = require("../controllers/auth.controller");
 
+// SECURITY (VULN-07): every credential-handling route is rate limited.
+const { authLimiter, passwordResetLimiter } = require("../middleware/rateLimit.middleware");
+
 module.exports = (app) => {
 	// Route to handle SignUp requests
-	app.post("/signup", controller.signup);
+	app.post("/signup", authLimiter, controller.signup);
 
 	// Route to handle SignIn requests
-	app.post("/signin", controller.signin);
+	app.post("/signin", authLimiter, controller.signin);
 
 	// Route to handle Reset Passwords requests
-	app.post("/reset-pwd", controller.resetPwd);
+	// Stricter limit: each accepted request sends an email.
+	app.post("/reset-pwd", passwordResetLimiter, controller.resetPwd);
 
 	// Route to handle Create New Passwords requests
-	app.post("/new-pwd", controller.newPwd);
+	app.post("/new-pwd", authLimiter, controller.newPwd);
 };

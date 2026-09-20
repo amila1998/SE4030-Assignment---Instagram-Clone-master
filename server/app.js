@@ -68,6 +68,33 @@ app.use(
 	})
 );
 
+// SECURITY (VULN-07): rate limiting keys on the client IP, so how Express
+// derives that IP decides whether the limiter can be bypassed.
+//
+//   - `trust proxy` left false (the default): req.ip is the socket address.
+//     Correct when the app is exposed directly, as it is in development.
+//   - `trust proxy` set to true: Express takes the LEFT-MOST value of the
+//     client-supplied X-Forwarded-For header, which an attacker can set
+//     freely - rotating it defeats the limiter entirely.
+//
+// So this must be an explicit deployment decision, never a blanket `true`.
+// Set TRUST_PROXY to the exact number of reverse proxies in front of the
+// app (e.g. "1" behind a single nginx or load balancer).
+if (process.env.TRUST_PROXY) {
+	const hops = Number(process.env.TRUST_PROXY);
+	if (!Number.isInteger(hops) || hops < 0) {
+		throw new Error("TRUST_PROXY must be a non-negative integer (the number of proxy hops).");
+	}
+	app.set("trust proxy", hops);
+} else {
+	app.set("trust proxy", false);
+}
+
+// Broad backstop limiter for the whole API. The stricter per-endpoint
+// limiters are attached in routes/auth.route.js.
+const { globalLimiter } = require("./middleware/rateLimit.middleware");
+app.use(globalLimiter);
+
 /**
  * -------------- ROUTES ----------------
  */
