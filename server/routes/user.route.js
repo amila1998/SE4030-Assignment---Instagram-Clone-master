@@ -32,5 +32,9 @@ module.exports = (app) => {
 	app.put("/update-picture", loginmiddleware, controller.updatePicture);
 
 	// Search for a user by email
-	app.post("/users-research", controller.userSearch);
+	// SECURITY (VULN-01): this route previously had no authentication
+	// middleware, so any anonymous caller could enumerate every account in
+	// the database. It now requires a valid session like every other
+	// non-auth endpoint.
+	app.post("/users-research", loginmiddleware, controller.userSearch);
 };
