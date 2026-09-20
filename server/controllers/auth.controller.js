@@ -66,7 +66,10 @@ exports.signin = (req, res) => {
 		return res.json({ error: "Please provide Email or Password" });
 	}
 	// Check if email exist in our DB
+	// `Password` is `select: false` on the schema (VULN-02), so it has to be
+	// requested explicitly here - this is the only place that needs it.
 	User.findOne({ Email: email })
+		.select("+Password")
 		.then((savedUser) => {
 			if (!savedUser) {
 				return res.json({ error: "Invalid Email or Password" });

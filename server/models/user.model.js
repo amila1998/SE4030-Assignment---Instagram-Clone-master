@@ -17,12 +17,18 @@ const userSchema = new mongoose.Schema({
 		type: String,
 		required: true,
 	},
+	// SECURITY (VULN-02): secret-bearing fields are marked `select: false`
+	// so they are excluded from every query by default and must be opted
+	// into explicitly with `.select("+Field")`. Previously these fields
+	// were returned by any query that did not remember to project them
+	// away, which leaked live password-reset tokens to other users.
 	Password: {
 		type: String,
 		required: true,
+		select: false,
 	},
-	ResetToken: { type: String },
-	ExpirationToken: { type: Date },
+	ResetToken: { type: String, select: false },
+	ExpirationToken: { type: Date, select: false },
 	Photo: {
 		type: Buffer,
 	},

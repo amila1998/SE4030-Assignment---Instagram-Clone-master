@@ -8,8 +8,13 @@ const Post = require("../models/post.model");
 const User = require("../models/user.model");
 
 exports.user = (req, res) => {
+	// SECURITY (VULN-02): use an explicit allow-list projection rather than
+	// the old `.select("-Password")` deny-list. A deny-list silently leaks
+	// every field someone forgets to add to it - which is exactly how the
+	// live `ResetToken` / `ExpirationToken` values ended up in this
+	// response and made one-click account takeover possible.
 	User.findOne({ _id: req.params.id })
-		.select("-Password")
+		.select("_id Name Email Photo PhotoType Followers Following")
 		.then((user) => {
 			Post.find({ PostedBy: req.params.id })
 				.populate("PostedBy", "_id Name")
