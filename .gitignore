@@ -23,3 +23,5 @@ dist/
 # Logs
 *.log
 npm-debug.log*
+REPORT.html
+/node_modules/
