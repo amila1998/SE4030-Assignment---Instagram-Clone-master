@@ -1,4 +1,4 @@
-
+﻿
 VULN-06  Password policy
 ------------------------
   PASS  [VULN-06] single-character password is rejected

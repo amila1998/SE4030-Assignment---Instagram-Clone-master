@@ -8,6 +8,10 @@
  * demonstrated in the video rather than automated here.
  *
  * Usage:  node security/verify-oauth.js
+ *
+ * Run this against a FRESHLY STARTED server. The OAuth routes share the
+ * authentication rate limiter, so running verify-fixes.js first - which
+ * deliberately exhausts that budget - will leave this suite throttled.
  */
 
 const crypto = require("crypto");
@@ -39,6 +43,27 @@ const run = async () => {
 	// `redirect: manual` so we can inspect the 302 rather than following it
 	// out to Google.
 	const start = await fetch(BASE + "/auth/google", { redirect: "manual" });
+
+	// The OAuth routes share `authLimiter` with the password endpoints, so a
+	// preceding run of verify-fixes.js (which deliberately exhausts that
+	// budget) leaves this suite throttled. Say so plainly instead of failing
+	// with an opaque "Invalid URL" further down.
+	if (start.status === 429) {
+		console.error(
+			[
+				"",
+				"  Rate limited (429) before the suite could start.",
+				"",
+				"  The OAuth routes share the authentication rate limiter, so this",
+				"  happens when verify-fixes.js ran recently and spent that budget.",
+				"  Restart the API and try again:",
+				"     stop the server, then `npm start` in ./server",
+				"",
+			].join("\n")
+		);
+		process.exit(1);
+	}
+
 	check("returns a redirect", start.status === 302 || start.status === 303, start.status);
 
 	const location = start.headers.get("location") || "";
@@ -150,10 +175,14 @@ const run = async () => {
 	console.log(`\n${"=".repeat(60)}`);
 	console.log(`RESULT: ${passed} passed, ${failed} failed`);
 	console.log("=".repeat(60));
-	process.exit(failed === 0 ? 0 : 1);
+	// Set the exit code and let the event loop drain naturally. Calling
+	// process.exit() here races Node's teardown of undici's keep-alive
+	// sockets on Windows and prints a spurious libuv assertion AFTER the
+	// results, which reads like a failure but is not one.
+	process.exitCode = failed === 0 ? 0 : 1;
 };
 
 run().catch((err) => {
 	console.error("Verification run failed:", err);
-	process.exit(1);
+	process.exitCode = 1;
 });

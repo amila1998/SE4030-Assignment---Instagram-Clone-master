@@ -278,12 +278,16 @@ const run = async () => {
 	console.log(`\n${"=".repeat(60)}`);
 	console.log(`RESULT: ${passed} passed, ${failed} failed`);
 	console.log("=".repeat(60));
-	process.exit(failed === 0 ? 0 : 1);
+	// Set the exit code and let the event loop drain naturally. Calling
+	// process.exit() here races Node's teardown of undici's keep-alive
+	// sockets on Windows and prints a spurious libuv assertion AFTER the
+	// results, which reads like a failure but is not one.
+	process.exitCode = failed === 0 ? 0 : 1;
 };
 
 run().catch((err) => {
 	console.error("Verification run failed:", err);
-	process.exit(1);
+	process.exitCode = 1;
 });
 
 /**

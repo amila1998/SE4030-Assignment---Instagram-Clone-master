@@ -1,4 +1,4 @@
-
+﻿
 Authorization request (GET /auth/google)
 ----------------------------------------
   PASS  returns a redirect
@@ -40,4 +40,3 @@ Freshness
 ============================================================
 RESULT: 23 passed, 0 failed
 ============================================================
-Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 76
