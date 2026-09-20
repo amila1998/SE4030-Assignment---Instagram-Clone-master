@@ -13,7 +13,26 @@ const { validateEncodedImage } = require("../utils/imageUpload");
 // SECURITY (VULN-08): reject malformed ObjectIds at the boundary.
 const isValidObjectId = (id) => typeof id === "string" && mongoose.Types.ObjectId.isValid(id);
 
-exports.user = (req, res) => {
+// SECURITY (VULN-09): `Photo` defaults to the STRING "no photo" in the post
+// schema, so the old unguarded `item.Photo.toString("base64")` produced
+// garbage for image-less posts. One guarded serialiser, used by every
+// handler here, also keeps the returned field list explicit.
+const serializePost = (item) => ({
+	_id: item._id,
+	PostedBy: item.PostedBy,
+	Title: item.Title,
+	Body: item.Body,
+	Photo: Buffer.isBuffer(item.Photo) ? item.Photo.toString("base64") : null,
+	PhotoType: item.PhotoType || null,
+	Likes: item.Likes,
+	Comments: item.Comments,
+	createdAt: item.createdAt,
+});
+
+// Bound profile and bookmark listings for the same reason as the feeds.
+const PROFILE_PAGE_SIZE = 50;
+
+exports.user = async (req, res) => {
 	// SECURITY (VULN-02): use an explicit allow-list projection rather than
 	// the old `.select("-Password")` deny-list. A deny-list silently leaks
 	// every field someone forgets to add to it - which is exactly how the
@@ -23,36 +42,28 @@ exports.user = (req, res) => {
 	if (!isValidObjectId(req.params.id)) {
 		return res.status(400).json({ error: "A valid user id is required." });
 	}
-	User.findOne({ _id: req.params.id })
-		.select("_id Name Email Photo PhotoType Followers Following")
-		.then((user) => {
-			Post.find({ PostedBy: req.params.id })
-				.populate("PostedBy", "_id Name")
-				.exec((err, result) => {
-					if (err) return res.status(422).json();
-					const posts = [];
-					result.map((item) => {
-						posts.push({
-							_id: item._id,
-							Title: item.Title,
-							Body: item.Body,
-							Photo: item.Photo.toString("base64"),
-							PhotoType: item.PhotoType,
-							Likes: item.Likes,
-							Comments: item.Comments,
-							Followers: item.Followers,
-							Following: item.Following,
-						});
-					});
-					res.json({ user, posts });
-				});
-		})
-		.catch((err) => {
-			return res.status(404).json({ Error: "User not found" });
-		});
+	try {
+		const user = await User.findOne({ _id: req.params.id }).select(
+			"_id Name Email Photo PhotoType Followers Following"
+		);
+		if (!user) {
+			return res.status(404).json({ error: "User not found." });
+		}
+
+		const result = await Post.find({ PostedBy: req.params.id })
+			.populate("PostedBy", "_id Name")
+			.sort("-createdAt")
+			.limit(PROFILE_PAGE_SIZE);
+
+		return res.json({ user, posts: result.map(serializePost) });
+	} catch (err) {
+		// SECURITY (VULN-09): log the detail, return a generic message.
+		console.error("[user]", err);
+		return res.status(500).json({ error: "Unable to load the profile." });
+	}
 };
 
-exports.follow = (req, res) => {
+exports.follow = async (req, res) => {
 	// SECURITY (VULN-08): validate the target id, and use $addToSet rather
 	// than $push. With $push, replaying the same follow request appended a
 	// duplicate entry every time, letting one caller grow another user's
@@ -64,99 +75,77 @@ exports.follow = (req, res) => {
 	if (req.body.followId === req.user._id.toString()) {
 		return res.status(400).json({ error: "You cannot follow yourself." });
 	}
-	User.findByIdAndUpdate(
-		req.body.followId,
-		{
-			$addToSet: { Followers: req.user._id },
-		},
-		{
-			new: true,
-		},
-		(err, result) => {
-			if (err) {
-				return res.status(422).json({ error: err });
-			}
-			User.findByIdAndUpdate(
-				req.user._id,
-				{
-					$addToSet: { Following: req.body.followId },
-				},
-				{ new: true }
-			)
-				.select("-Password")
-				.then((result) => {
-					res.json(result);
-				})
-				.catch((err) => {
-					return res.status(422).json({ error: err });
-				});
+	try {
+		const target = await User.findByIdAndUpdate(
+			req.body.followId,
+			{ $addToSet: { Followers: req.user._id } },
+			{ new: true }
+		);
+		if (!target) {
+			return res.status(404).json({ error: "User not found." });
 		}
-	);
+
+		const result = await User.findByIdAndUpdate(
+			req.user._id,
+			{ $addToSet: { Following: req.body.followId } },
+			{ new: true }
+		).select("_id Name Email Photo PhotoType Followers Following Bookmarks");
+
+		return res.json(result);
+	} catch (err) {
+		// SECURITY (VULN-09): log the detail, return a generic message.
+		console.error("[follow]", err);
+		return res.status(500).json({ error: "Unable to complete the request." });
+	}
 };
 
-exports.unfollow = (req, res) => {
+exports.unfollow = async (req, res) => {
 	// SECURITY (VULN-08): validate the target id before it reaches Mongoose.
 	if (!isValidObjectId(req.body.unfollowId)) {
 		return res.status(400).json({ error: "A valid unfollowId is required." });
 	}
-	User.findByIdAndUpdate(
-		req.body.unfollowId,
-		{
-			$pull: { Followers: req.user._id },
-		},
-		{
-			new: true,
-		},
-		(err, result) => {
-			if (err) {
-				return res.status(422).json({ error: err });
-			}
-			User.findByIdAndUpdate(
-				req.user._id,
-				{
-					$pull: { Following: req.body.unfollowId },
-				},
-				{ new: true }
-			)
-				.select("-Password")
-				.then((result) => {
-					res.json(result);
-				})
-				.catch((err) => {
-					return res.status(422).json({ error: err });
-				});
+	try {
+		const target = await User.findByIdAndUpdate(
+			req.body.unfollowId,
+			{ $pull: { Followers: req.user._id } },
+			{ new: true }
+		);
+		if (!target) {
+			return res.status(404).json({ error: "User not found." });
 		}
-	);
+
+		const result = await User.findByIdAndUpdate(
+			req.user._id,
+			{ $pull: { Following: req.body.unfollowId } },
+			{ new: true }
+		).select("_id Name Email Photo PhotoType Followers Following Bookmarks");
+
+		return res.json(result);
+	} catch (err) {
+		console.error("[unfollow]", err);
+		return res.status(500).json({ error: "Unable to complete the request." });
+	}
 };
 
-exports.bookmarks = (req, res) => {
-	User.find({ _id: req.user._id })
-		.select("-Password")
-		.then((user) => {
-			const data = user[0].Bookmarks;
-			Post.find({ _id: { $in: data } })
-				.populate("PostedBy", "_id Name")
-				.then((result) => {
-					let bookmark = [];
-					result.map((item) => {
-						bookmark.push({
-							_id: item._id,
-							PostedBy: item.PostedBy,
-							Title: item.Title,
-							Body: item.Body,
-							Photo: item.Photo.toString("base64"),
-							PhotoType: item.PhotoType,
-							Likes: item.Likes,
-							Comments: item.Comments,
-						});
-					});
-					res.json({ bookmark });
-				})
-				.catch((err) => console.log(err));
-		})
-		.catch((err) => {
-			return res.status(404).json({ Error: "User not found" });
-		});
+exports.bookmarks = async (req, res) => {
+	try {
+		// The original read `user[0].Bookmarks` from a .find() result without
+		// checking that the array was non-empty, which threw on any request
+		// whose session pointed at a deleted account.
+		const user = await User.findById(req.user._id).select("_id Bookmarks");
+		if (!user) {
+			return res.status(404).json({ error: "User not found." });
+		}
+
+		const result = await Post.find({ _id: { $in: user.Bookmarks } })
+			.populate("PostedBy", "_id Name")
+			.limit(PROFILE_PAGE_SIZE);
+
+		return res.json({ bookmark: result.map(serializePost) });
+	} catch (err) {
+		console.error("[bookmarks]", err);
+		return res.status(500).json({ error: "Unable to load bookmarks." });
+	}
 };
 
 exports.bookmarkPost = (req, res) => {
@@ -177,7 +166,8 @@ exports.bookmarkPost = (req, res) => {
 			res.json(result);
 		})
 		.catch((err) => {
-			return res.json({ error: err });
+			console.error("[bookmark]", err);
+			return res.status(500).json({ error: "Unable to update bookmarks." });
 		});
 };
 
@@ -198,7 +188,8 @@ exports.removeBookmark = (req, res) => {
 			res.json(result);
 		})
 		.catch((err) => {
-			return res.json({ error: err });
+			console.error("[bookmark]", err);
+			return res.status(500).json({ error: "Unable to update bookmarks." });
 		});
 };
 

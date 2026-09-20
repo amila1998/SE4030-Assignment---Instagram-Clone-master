@@ -33,20 +33,74 @@ connectDB();
 // Create the Express application object
 const app = express();
 
+// SECURITY (VULN-09): disable the framework fingerprint BEFORE any route or
+// middleware can emit a response. The original code called this AFTER the
+// routes were registered and immediately before app.listen(), which still
+// worked by accident, but placing it here makes the ordering intentional
+// rather than incidental.
+app.disable("x-powered-by");
+
 // Compress the HTTP response sent back to a client
 app.use(compression()); //Compress all routes
 
-// Use Helmet to protect against well known vulnerabilities
-app.use(helmet());
+// SECURITY (VULN-09): configure Helmet explicitly rather than relying on the
+// bare defaults. The API serves JSON only, so the CSP can be maximally
+// restrictive - there is no legitimate reason for a response from this origin
+// to load a script, a frame or an object.
+app.use(
+	helmet({
+		contentSecurityPolicy: {
+			useDefaults: false,
+			directives: {
+				defaultSrc: ["'none'"],
+				frameAncestors: ["'none'"], // clickjacking
+				baseUri: ["'none'"],
+				formAction: ["'none'"],
+				scriptSrc: ["'none'"],
+				objectSrc: ["'none'"],
+			},
+		},
+		// Send the Referer header only to same-origin destinations, so that
+		// resource ids in URLs do not leak to third parties.
+		referrerPolicy: { policy: "no-referrer" },
+		// HSTS is only meaningful over TLS; enable it when NODE_ENV=production,
+		// where the app is expected to sit behind HTTPS.
+		hsts:
+			process.env.NODE_ENV === "production"
+				? { maxAge: 31536000, includeSubDomains: true, preload: true }
+				: false,
+		crossOriginResourcePolicy: { policy: "same-site" },
+	})
+);
 
-// use Morgan dep in dev mode
-app.use(morgan("dev"));
+// SECURITY (VULN-09): request logging. "dev" is a terse development format;
+// production uses "combined". Either way the Authorization header is never
+// part of these formats, so bearer tokens do not reach the log.
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
-// Set up cors to allow us to accept requests from our client
+// SECURITY (VULN-09): the allowed origin was hard-coded to
+// http://localhost:3000, so any real deployment would either break or be
+// "fixed" by someone setting origin:true - which reflects ANY origin and,
+// together with credentials:true, disables the same-origin policy for this
+// API entirely. Read it from configuration instead, defaulting to the
+// development origin, and reject unknown origins explicitly.
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || "http://localhost:3000")
+	.split(",")
+	.map((o) => o.trim())
+	.filter(Boolean);
+
 app.use(
 	cors({
-		origin: "http://localhost:3000", // <-- location of the react app were connecting to
+		origin: (origin, callback) => {
+			// Requests with no Origin header (curl, same-origin, server-to-server)
+			// are not subject to the browser same-origin policy.
+			if (!origin) return callback(null, true);
+			if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+			return callback(new Error(`Origin ${origin} is not allowed by CORS.`));
+		},
 		credentials: true,
+		methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+		allowedHeaders: ["Content-Type", "Authorization"],
 	})
 );
 
@@ -108,14 +162,48 @@ require("./routes/post.route")(app);
 require("./routes/user.route")(app);
 
 /**
+ * -------------- ERROR HANDLING ----------------
+ */
+
+// SECURITY (VULN-09): an explicit 404 for unmatched routes. Without it,
+// Express falls through to its default handler, which renders an HTML error
+// page containing the request path - an unnecessary reflection of user input
+// from a JSON API.
+app.use((req, res) => {
+	res.status(404).json({ error: "Not found." });
+});
+
+// SECURITY (VULN-09): centralised error handler. Express's default handler
+// returns the full stack trace whenever NODE_ENV is not "production",
+// disclosing absolute file paths, dependency versions and internal structure.
+// Log the detail server-side; return a generic message to the caller.
+//
+// eslint-disable-next-line no-unused-vars -- Express identifies the error
+// handler by its four-parameter arity, so `next` must stay in the signature.
+app.use((err, req, res, next) => {
+	console.error("[unhandled]", err);
+
+	// Surface CORS rejections as 403 rather than a generic 500.
+	if (err && typeof err.message === "string" && err.message.includes("not allowed by CORS")) {
+		return res.status(403).json({ error: "Origin not allowed." });
+	}
+	// Body parser rejections (oversized or malformed payloads).
+	if (err && err.type === "entity.too.large") {
+		return res.status(413).json({ error: "Request body is too large." });
+	}
+	if (err && err.type === "entity.parse.failed") {
+		return res.status(400).json({ error: "Request body is not valid JSON." });
+	}
+
+	return res.status(500).json({ error: "An unexpected error occurred." });
+});
+
+/**
  * -------------- SERVER ----------------
  */
 
 // Specify the PORT which will the server running on
 const PORT = process.env.PORT || 3001;
-
-// Disabling Powered by tag
-app.disable("x-powered-by");
 
 app.listen(PORT, () => {
 	console.log(`Server is running in ${process.env.NODE_ENV} mode, under port ${PORT}.`);

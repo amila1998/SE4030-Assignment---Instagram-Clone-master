@@ -18,6 +18,13 @@ const TITLE_MAX_LENGTH = 150;
 const BODY_MAX_LENGTH = 2200; // matches Instagram's own caption limit
 const COMMENT_MAX_LENGTH = 1000;
 
+// SECURITY (VULN-09): the feed endpoints previously returned EVERY matching
+// post, with the full base64 image inlined in each one. A growing database
+// therefore turned a single authenticated GET into an ever-larger response -
+// uncontrolled resource consumption on both the server and the client. Cap
+// the page size until real cursor pagination is implemented.
+const FEED_PAGE_SIZE = 50;
+
 const validateText = (value, label, maxLength) => {
 	if (typeof value !== "string") return `${label} must be a string.`;
 	const trimmed = value.trim();
@@ -32,82 +39,67 @@ const validateText = (value, label, maxLength) => {
 // easy to mishandle.
 const isValidObjectId = (id) => typeof id === "string" && mongoose.Types.ObjectId.isValid(id);
 
-exports.allPost = (req, res) => {
-	Post.find()
-		.populate("PostedBy", "_id Name")
-		.populate("Comments.PostedBy", "_id Name")
-		.sort("-createdAt")
-		.then((data) => {
-			let posts = [];
-			data.map((item) => {
-				posts.push({
-					_id: item._id,
-					Title: item.Title,
-					Body: item.Body,
-					PostedBy: item.PostedBy,
-					Photo: item.Photo.toString("base64"),
-					PhotoType: item.PhotoType,
-					Likes: item.Likes,
-					Comments: item.Comments,
-				});
-			});
-			res.json({ posts });
-		})
-		.catch((err) => {
-			console.log(err);
-		});
+/**
+ * Single serialisation shape for a post.
+ *
+ * Every handler previously rebuilt this object by hand, and each one called
+ * `item.Photo.toString("base64")` unguarded. The schema defaults `Photo` to
+ * the STRING "no photo" rather than a Buffer, so any post saved without an
+ * image made the whole feed request throw. Centralising the shape fixes that
+ * once and keeps the field allow-list in a single place.
+ */
+const serializePost = (item) => ({
+	_id: item._id,
+	Title: item.Title,
+	Body: item.Body,
+	PostedBy: item.PostedBy,
+	Photo: Buffer.isBuffer(item.Photo) ? item.Photo.toString("base64") : null,
+	PhotoType: item.PhotoType || null,
+	Likes: item.Likes,
+	Comments: item.Comments,
+	createdAt: item.createdAt,
+});
+
+exports.allPost = async (req, res) => {
+	try {
+		const data = await Post.find()
+			.populate("PostedBy", "_id Name")
+			.populate("Comments.PostedBy", "_id Name")
+			.sort("-createdAt")
+			.limit(FEED_PAGE_SIZE);
+		return res.json({ posts: data.map(serializePost) });
+	} catch (err) {
+		console.error("[allPost]", err);
+		return res.status(500).json({ error: "Unable to load posts." });
+	}
 };
 
-exports.subPost = (req, res) => {
-	Post.find({ PostedBy: { $in: req.user.Following } })
-		.populate("PostedBy", "_id Name")
-		.populate("Comments.PostedBy", "_id Name")
-		.sort("-createdAt")
-		.then((data) => {
-			let posts = [];
-			data.map((item) => {
-				posts.push({
-					_id: item._id,
-					Title: item.Title,
-					Body: item.Body,
-					PostedBy: item.PostedBy,
-					Photo: item.Photo.toString("base64"),
-					PhotoType: item.PhotoType,
-					Likes: item.Likes,
-					Comments: item.Comments,
-				});
-			});
-			res.json({ posts });
-		})
-		.catch((err) => {
-			console.log(err);
-		});
+exports.subPost = async (req, res) => {
+	try {
+		const data = await Post.find({ PostedBy: { $in: req.user.Following } })
+			.populate("PostedBy", "_id Name")
+			.populate("Comments.PostedBy", "_id Name")
+			.sort("-createdAt")
+			.limit(FEED_PAGE_SIZE);
+		return res.json({ posts: data.map(serializePost) });
+	} catch (err) {
+		console.error("[subPost]", err);
+		return res.status(500).json({ error: "Unable to load posts." });
+	}
 };
 
-exports.myPost = (req, res) => {
-	Post.find({ PostedBy: req.user._id })
-		.populate("PostedBy", "_id Name")
-		.populate("Comments.PostedBy", "_id Name")
-		.sort("-createdAt")
-		.then((data) => {
-			let posts = [];
-			data.map((item) => {
-				posts.push({
-					id: item._id,
-					title: item.Title,
-					body: item.body,
-					//postedBy: item.PostedBy,
-					photo: item.Photo.toString("base64"),
-					photoType: item.PhotoType,
-					likes: item.Likes,
-					Comments: item.Comments,
-				});
-			});
-			res.json({ posts });
-		})
-		.catch((err) => {
-			console.log(err);
-		});
+exports.myPost = async (req, res) => {
+	try {
+		const data = await Post.find({ PostedBy: req.user._id })
+			.populate("PostedBy", "_id Name")
+			.populate("Comments.PostedBy", "_id Name")
+			.sort("-createdAt")
+			.limit(FEED_PAGE_SIZE);
+		return res.json({ posts: data.map(serializePost) });
+	} catch (err) {
+		console.error("[myPost]", err);
+		return res.status(500).json({ error: "Unable to load posts." });
+	}
 };
 
 exports.createPost = (req, res) => {
@@ -152,70 +144,54 @@ exports.createPost = (req, res) => {
 		});
 };
 
-exports.like = (req, res) => {
+exports.like = async (req, res) => {
 	// SECURITY (VULN-08): reject malformed ids before they reach Mongoose.
 	if (!isValidObjectId(req.body.postId)) {
 		return res.status(400).json({ error: "A valid postId is required." });
 	}
-	Post.findByIdAndUpdate(
-		req.body.postId,
-		{
-			$push: { Likes: req.user._id },
-		},
-		{ new: true }
-	)
-		.populate("PostedBy", "_id Name")
-		.populate("Comments.PostedBy", "_id Name")
-		.exec((err, result) => {
-			if (err) return res.status(422).json({ Error: err });
-			else {
-				res.json({
-					_id: result._id,
-					Title: result.Title,
-					Body: result.Body,
-					PostedBy: result.PostedBy,
-					Photo: result.Photo.toString("base64"),
-					PhotoType: result.PhotoType,
-					Likes: result.Likes,
-					Comments: result.Comments,
-				});
-			}
-		});
+	try {
+		// $addToSet, not $push: repeated like requests previously appended a
+		// duplicate entry per call, growing the Likes array without bound.
+		const result = await Post.findByIdAndUpdate(
+			req.body.postId,
+			{ $addToSet: { Likes: req.user._id } },
+			{ new: true }
+		)
+			.populate("PostedBy", "_id Name")
+			.populate("Comments.PostedBy", "_id Name");
+
+		if (!result) return res.status(404).json({ error: "Post not found." });
+		return res.json(serializePost(result));
+	} catch (err) {
+		// SECURITY (VULN-09): log the detail, return a generic message.
+		console.error("[like]", err);
+		return res.status(500).json({ error: "Unable to like the post." });
+	}
 };
 
-exports.unlike = (req, res) => {
+exports.unlike = async (req, res) => {
 	// SECURITY (VULN-08): reject malformed ids before they reach Mongoose.
 	if (!isValidObjectId(req.body.postId)) {
 		return res.status(400).json({ error: "A valid postId is required." });
 	}
-	Post.findByIdAndUpdate(
-		req.body.postId,
-		{
-			$pull: { Likes: req.user._id },
-		},
-		{ new: true }
-	)
-		.populate("PostedBy", "_id Name")
-		.populate("Comments.PostedBy", "_id Name")
-		.exec((err, result) => {
-			if (err) return res.status(422).json({ Error: err });
-			else {
-				console.log(result);
-				res.json({
-					_id: result._id,
-					Title: result.Title,
-					Body: result.Body,
-					PostedBy: result.PostedBy,
-					Photo: result.Photo.toString("base64"),
-					PhotoType: result.PhotoType,
-					Likes: result.Likes,
-					Comments: result.Comments,
-				});
-			}
-		});
+	try {
+		const result = await Post.findByIdAndUpdate(
+			req.body.postId,
+			{ $pull: { Likes: req.user._id } },
+			{ new: true }
+		)
+			.populate("PostedBy", "_id Name")
+			.populate("Comments.PostedBy", "_id Name");
+
+		if (!result) return res.status(404).json({ error: "Post not found." });
+		return res.json(serializePost(result));
+	} catch (err) {
+		console.error("[unlike]", err);
+		return res.status(500).json({ error: "Unable to unlike the post." });
+	}
 };
 
-exports.comment = (req, res) => {
+exports.comment = async (req, res) => {
 	// SECURITY (VULN-08): validate the comment text and the target post id.
 	// The original handler pushed `req.body.text` of any type and any length
 	// into the Comments array.
@@ -226,44 +202,46 @@ exports.comment = (req, res) => {
 		return res.status(400).json({ error: "A valid postId is required." });
 	}
 
-	const comment = { Text: req.body.text.trim(), PostedBy: req.user._id };
-	Post.findByIdAndUpdate(
-		req.body.postId,
-		{
-			$push: { Comments: comment },
-		},
-		{ new: true }
-	)
-		.populate("Comments.PostedBy", "_id Name")
-		.populate("PostedBy", "_id Name")
-		.exec((err, result) => {
-			if (err) return res.status(422).json({ Error: err });
-			else {
-				res.json({
-					_id: result._id,
-					Title: result.Title,
-					Body: result.Body,
-					PostedBy: result.PostedBy,
-					Photo: result.Photo.toString("base64"),
-					PhotoType: result.PhotoType,
-					Likes: result.Likes,
-					Comments: result.Comments,
-				});
-			}
-		});
+	try {
+		const comment = { Text: req.body.text.trim(), PostedBy: req.user._id };
+		const result = await Post.findByIdAndUpdate(
+			req.body.postId,
+			{ $push: { Comments: comment } },
+			{ new: true }
+		)
+			.populate("Comments.PostedBy", "_id Name")
+			.populate("PostedBy", "_id Name");
+
+		if (!result) return res.status(404).json({ error: "Post not found." });
+		return res.json(serializePost(result));
+	} catch (err) {
+		console.error("[comment]", err);
+		return res.status(500).json({ error: "Unable to add the comment." });
+	}
 };
 
-exports.deletePost = (req, res) => {
-	Post.findOne({ _id: req.params.postId })
-		.populate("PostedBy", "_id")
-		.exec((err, post) => {
-			if (err || !post) return res.status(422).json({ Error: err });
-			if (post.PostedBy._id.toString() === req.user._id.toString()) {
-				post.remove()
-					.then((result) => {
-						res.json(result._id);
-					})
-					.catch((err) => console.log(err));
-			}
-		});
+exports.deletePost = async (req, res) => {
+	if (!isValidObjectId(req.params.postId)) {
+		return res.status(400).json({ error: "A valid postId is required." });
+	}
+	try {
+		const post = await Post.findById(req.params.postId).populate("PostedBy", "_id");
+		if (!post) {
+			return res.status(404).json({ error: "Post not found." });
+		}
+
+		// SECURITY (VULN-09): the original handler checked ownership but had
+		// NO else branch - a non-owner's request simply fell off the end of
+		// the function, so the response was never sent and the client hung
+		// until it timed out. Deny explicitly with 403.
+		if (post.PostedBy._id.toString() !== req.user._id.toString()) {
+			return res.status(403).json({ error: "You can only delete your own posts." });
+		}
+
+		await post.deleteOne();
+		return res.json({ _id: post._id });
+	} catch (err) {
+		console.error("[deletePost]", err);
+		return res.status(500).json({ error: "Unable to delete the post." });
+	}
 };
