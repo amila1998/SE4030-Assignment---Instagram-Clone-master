@@ -16,7 +16,13 @@ const User = require("../models/user.model");
 
 // SignUp Controller
 exports.signup = (req, res) => {
+	// SECURITY (VULN-03): same operator-injection guard as `signin`. Without
+	// it, `{"email": {"$ne": null}}` makes the duplicate-account lookup match
+	// an unrelated user and reject every registration attempt.
 	const { name, email, password } = req.body;
+	if (typeof name !== "string" || typeof email !== "string" || typeof password !== "string") {
+		return res.status(400).json({ error: "Name, email and password must be strings." });
+	}
 	// Verifying if one of the fields is Empty
 	if (!name || !password || !email) {
 		return res.json({ error: "Please submit all required field" });
@@ -60,7 +66,14 @@ exports.signup = (req, res) => {
 
 // SignIn Controller
 exports.signin = (req, res) => {
+	// SECURITY (VULN-03): reject non-string credentials outright rather than
+	// coercing them. `{"email": {"$ne": null}}` would otherwise reach
+	// Mongoose as a query operator and match an arbitrary account instead of
+	// performing the intended equality comparison.
 	const { email, password } = req.body;
+	if (typeof email !== "string" || typeof password !== "string") {
+		return res.status(400).json({ error: "Email and password must be strings." });
+	}
 	// Verification for an empty field
 	if (!email || !password) {
 		return res.json({ error: "Please provide Email or Password" });
@@ -95,12 +108,20 @@ exports.signin = (req, res) => {
 
 // Reset Password Controller
 exports.resetPwd = (req, res) => {
+	// SECURITY (VULN-03): `{"email": {"$ne": null}}` here previously matched
+	// the first user in the collection and stamped a reset token onto that
+	// account - an attacker-triggered reset against a victim chosen by the
+	// database, not by the requester.
+	const { email } = req.body;
+	if (typeof email !== "string") {
+		return res.status(400).json({ error: "Email must be a string." });
+	}
 	crypto.randomBytes(32, (err, buffer) => {
 		if (err) {
 			console.log(err);
 		}
 		const token = buffer.toString("hex");
-		User.findOne({ Email: req.body.email }).then((user) => {
+		User.findOne({ Email: email }).then((user) => {
 			if (!user) {
 				console.log("simple check of the error source");
 				return res.json({ error: "No User exists with that email" });
@@ -136,8 +157,15 @@ exports.resetPwd = (req, res) => {
 
 // New Password Controller
 exports.newPwd = (req, res) => {
+	// SECURITY (VULN-03): the reset token is matched directly against the
+	// database, so a non-string here is the most dangerous injection in the
+	// application: `{"token": {"$ne": null}}` matched ANY user that happened
+	// to have a live reset token and handed the caller that account.
 	const Password = req.body.password;
 	const Token = req.body.token;
+	if (typeof Password !== "string" || typeof Token !== "string") {
+		return res.status(400).json({ error: "Token and password must be strings." });
+	}
 	User.findOne({ ResetToken: Token, ExpirationToken: { $gt: Date.now() } })
 		.then((user) => {
 			if (!user) {

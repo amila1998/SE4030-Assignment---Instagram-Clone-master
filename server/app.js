@@ -10,6 +10,7 @@ const morgan = require("morgan");
 const cors = require("cors");
 const compression = require("compression");
 const helmet = require("helmet");
+const mongoSanitize = require("express-mongo-sanitize");
 
 const connectDB = require("./config/db.config");
 
@@ -46,6 +47,20 @@ app.use(
 // Parsers
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
+
+// SECURITY (VULN-03): strip any key beginning with "$" or containing "."
+// from req.body / req.params / req.query before it can reach a Mongoose
+// query. This is the application-wide backstop against NoSQL operator
+// injection; individual controllers additionally coerce their inputs to
+// primitives so that a single missed middleware is not fatal.
+app.use(
+	mongoSanitize({
+		replaceWith: "_",
+		onSanitize: ({ req, key }) => {
+			console.warn(`[security] stripped NoSQL operator from ${key} on ${req.method} ${req.path}`);
+		},
+	})
+);
 
 /**
  * -------------- ROUTES ----------------
