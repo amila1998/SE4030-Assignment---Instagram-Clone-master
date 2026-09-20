@@ -1,0 +1,189 @@
+####################################################################
+# Custom Semgrep ruleset - SE4030 Secure Software Development
+#
+# The Semgrep community rulesets (p/javascript, p/nodejs, p/react,
+# p/security-audit) returned 0 findings on this codebase. The real
+# defects here are application-logic flaws that generic taint rules do
+# not model, so the rules below were written specifically to detect
+# them.
+#
+# Run:
+#   docker run --rm -v "<repo>:/src" semgrep/semgrep \
+#     semgrep --config /src/security/semgrep-rules.yml \
+#     --exclude=node_modules --no-git-ignore /src
+####################################################################
+
+rules:
+  # ---------------------------------------------------------------
+  # V1 - NoSQL operator injection (OWASP A03:2021 - Injection)
+  # A raw request field used as a Mongoose query VALUE lets a client
+  # submit {"$ne": null} / {"$gt": ""} instead of a string, turning an
+  # equality match into an attacker-controlled operator.
+  # ---------------------------------------------------------------
+  - id: nosql-operator-injection-from-request
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $MODEL.findOne({..., $FIELD: req.body.$PROP, ...})
+          - pattern: |
+              $MODEL.find({..., $FIELD: req.body.$PROP, ...})
+          - pattern: |
+              $MODEL.findOne({..., $FIELD: req.params.$PROP, ...})
+          - pattern: |
+              $MODEL.find({..., $FIELD: req.params.$PROP, ...})
+    message: >-
+      Request-controlled value flows into a Mongoose query filter without
+      being coerced to a primitive. A client can submit an object such as
+      {"$ne": null} to subvert the comparison (NoSQL operator injection).
+      Coerce with String() and/or enable express-mongo-sanitize.
+    languages: [js]
+    severity: ERROR
+    metadata:
+      owasp: "A03:2021 Injection"
+      cwe: "CWE-943: Improper Neutralization of Special Elements in Data Query Logic"
+      confidence: HIGH
+
+  # ---------------------------------------------------------------
+  # V2 - Unauthenticated Express route (OWASP A01:2021)
+  # Flags route registrations with no middleware between path and
+  # controller, excluding the intentionally public auth endpoints.
+  # ---------------------------------------------------------------
+  - id: express-route-missing-auth-middleware
+    patterns:
+      - pattern-either:
+          - pattern: |
+              app.get($PATH, $CTRL)
+          - pattern: |
+              app.post($PATH, $CTRL)
+          - pattern: |
+              app.put($PATH, $CTRL)
+          - pattern: |
+              app.delete($PATH, $CTRL)
+          - pattern: |
+              app.patch($PATH, $CTRL)
+      - metavariable-regex:
+          metavariable: $PATH
+          regex: ^(?!.*(signup|signin|new-pwd|reset-pwd|auth/|health)).*$
+    message: >-
+      Express route registered without an authentication middleware. Any
+      unauthenticated caller can reach this handler. Add the login
+      middleware unless the endpoint is deliberately public.
+    languages: [js]
+    severity: ERROR
+    metadata:
+      owasp: "A01:2021 Broken Access Control"
+      cwe: "CWE-306: Missing Authentication for Critical Function"
+      confidence: HIGH
+
+  # ---------------------------------------------------------------
+  # V3 - JWT signed without expiry (OWASP A07:2021)
+  # ---------------------------------------------------------------
+  - id: jwt-signed-without-expiry
+    patterns:
+      - pattern: |
+          jwt.sign($PAYLOAD, $SECRET)
+      - pattern-not: |
+          jwt.sign($PAYLOAD, $SECRET, {...})
+    message: >-
+      JWT is signed without an options object, so no `expiresIn` is set and
+      the token is valid indefinitely. Set an explicit short expiry and pin
+      the algorithm.
+    languages: [js]
+    severity: ERROR
+    metadata:
+      owasp: "A07:2021 Identification and Authentication Failures"
+      cwe: "CWE-613: Insufficient Session Expiration"
+      confidence: HIGH
+
+  # ---------------------------------------------------------------
+  # V4 - JWT verified without algorithm pinning
+  # ---------------------------------------------------------------
+  - id: jwt-verify-without-algorithm-pinning
+    patterns:
+      - pattern-either:
+          - pattern: |
+              jwt.verify($TOKEN, $SECRET, $CB)
+          - pattern: |
+              jwt.verify($TOKEN, $SECRET)
+      - pattern-not: |
+          jwt.verify($TOKEN, $SECRET, {..., algorithms: [...], ...}, ...)
+    message: >-
+      jwt.verify() is called without pinning `algorithms`. Pin the expected
+      algorithm (e.g. algorithms ["HS256"]) to prevent algorithm-confusion
+      attacks.
+    languages: [js]
+    severity: WARNING
+    metadata:
+      owasp: "A02:2021 Cryptographic Failures"
+      cwe: "CWE-757: Selection of Less-Secure Algorithm During Negotiation"
+      confidence: HIGH
+
+  # ---------------------------------------------------------------
+  # V5 - Regular expression built from user input (ReDoS + injection)
+  # ---------------------------------------------------------------
+  - id: regex-built-from-user-input
+    patterns:
+      - pattern-either:
+          - pattern: |
+              new RegExp(<... req.body.$P ...>)
+          - pattern: |
+              new RegExp(<... req.params.$P ...>)
+          - pattern: |
+              new RegExp(<... req.query.$P ...>)
+    message: >-
+      A RegExp is constructed from request input. The client controls regex
+      metacharacters, which allows both match manipulation and catastrophic
+      backtracking (ReDoS). Escape the input or use a literal comparison.
+    languages: [js]
+    severity: ERROR
+    metadata:
+      owasp: "A03:2021 Injection"
+      cwe: "CWE-1333: Inefficient Regular Expression Complexity"
+      confidence: HIGH
+
+  # ---------------------------------------------------------------
+  # V6 - Raw database error object returned to the client
+  # ---------------------------------------------------------------
+  - id: raw-error-object-in-response
+    patterns:
+      - pattern-either:
+          - pattern: |
+              res.status($CODE).json({..., error: $ERR, ...})
+          - pattern: |
+              res.status($CODE).json({..., Error: $ERR, ...})
+          - pattern: |
+              res.json({..., error: $ERR, ...})
+      - metavariable-regex:
+          metavariable: $ERR
+          regex: ^(err|error|e)$
+    message: >-
+      The raw error object is serialised into the HTTP response, disclosing
+      database driver internals and schema details to the caller. Log the
+      error server-side and return a generic message.
+    languages: [js]
+    severity: WARNING
+    metadata:
+      owasp: "A05:2021 Security Misconfiguration"
+      cwe: "CWE-209: Generation of Error Message Containing Sensitive Information"
+      confidence: HIGH
+
+  # ---------------------------------------------------------------
+  # V7 - Secret-bearing schema field selected by default
+  # ---------------------------------------------------------------
+  - id: secret-schema-field-not-excluded-by-default
+    patterns:
+      - pattern: |
+          $FIELD: { type: String }
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: ^(ResetToken|Password|RefreshToken|Secret|ApiKey)$
+    message: >-
+      Secret-bearing schema field is selected by default, so it is returned
+      by every query that does not explicitly exclude it. Add
+      `select: false` so it is opt-in rather than opt-out.
+    languages: [js]
+    severity: ERROR
+    metadata:
+      owasp: "A01:2021 Broken Access Control"
+      cwe: "CWE-200: Exposure of Sensitive Information to an Unauthorized Actor"
+      confidence: MEDIUM

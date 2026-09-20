@@ -1,0 +1,45 @@
+﻿docker :                
+At line:1 char:685
++ ... fore.json"; docker run --rm -v "D:\Sliit\ssd\Instagram-Clone-master:/ ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (               :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+               
+┌─────────────┐
+│ Scan Status │
+└─────────────┘
+  Scanning 51 files with 292 Code rules:
+                                                                                                                       
+ 
+  Language      Rules   Files          Origin      Rules                                                               
+ 
+ ─────────────────────────────        ───────────────────                                                              
+ 
+  js               81      34          Community     292                                                               
+ 
+  <multilang>       9      26                                                                                          
+ 
+  json              1       4                                                                                          
+ 
+                                                                                                                       
+ 
+                
+                
+┌──────────────┐
+│ Scan Summary │
+└──────────────┘
+✅ Scan completed successfully.
+ • Findings: 0 (0 blocking)
+ • Rules run: 91
+ • Targets scanned: 51
+ • Parsed lines: ~100.0%
+ • Scan skipped: 
+   ◦ Matching --exclude patterns: 2
+   ◦ Files matching .semgrepignore patterns: 1
+ • For a detailed list of skipped files and lines, run semgrep with the --verbose flag
+Ran 91 rules on 51 files: 0 findings.
+(need more rules? `semgrep login` for additional free Semgrep Registry rules)
+
+If Semgrep missed a finding, please send us feedback to let us know!
+See https://semgrep.dev/docs/reporting-false-negatives/

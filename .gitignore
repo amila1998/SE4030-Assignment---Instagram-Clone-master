@@ -1,0 +1,18 @@
+# Coursework material, not application source
+Assignment*.docx
+
+# Dependencies
+node_modules/
+
+# Secrets - never commit real credentials
+.env
+.env.local
+*.pem
+
+# Build output
+build/
+dist/
+
+# Logs
+*.log
+npm-debug.log*
