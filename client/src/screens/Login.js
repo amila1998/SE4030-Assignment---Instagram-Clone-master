@@ -63,6 +63,10 @@ const Login = () => {
 	const [password, setPassword] = useState("");
 	const [formatValidation, setFormatValidation] = useState(false);
 	const [authValidation, setAuthValidation] = useState(false);
+	// SECURITY (VULN-07): the alert text is now driven by the server, so a
+	// rate-limit message ("too many attempts") can be distinguished from a
+	// plain credential failure.
+	const [authMessage, setAuthMessage] = useState("Invalid given Email/Password — check it out!");
 
 	const handleInputChanges = (e) => {
 		switch (e.target.name) {
@@ -97,9 +101,20 @@ const Login = () => {
 					}
 				})
 				.catch((err) => {
-					// that should be changed in Production
-					// TODO : Make an error handler
-					console.log(err);
+					// SECURITY (VULN-07): the API now returns 401 for bad
+					// credentials and 429 when the rate limiter trips, instead
+					// of 200 with an error field. axios rejects on those, so the
+					// message is read from err.response here.
+					setFormatValidation(false);
+					setAuthValidation(true);
+					if (err.response && err.response.status === 429) {
+						setAuthMessage(
+							(err.response.data && err.response.data.error) ||
+								"Too many attempts. Please try again later."
+						);
+					} else {
+						setAuthMessage("Invalid email or password.");
+					}
 				});
 		} else {
 			setAuthValidation(false);
@@ -124,7 +139,7 @@ const Login = () => {
 						) : null}
 						{authValidation ? (
 							<Alert variant="outlined" severity="error">
-								Invalid given Email/Password — check it out!
+								{authMessage}
 							</Alert>
 						) : null}
 						<form className={classes.form} noValidate>

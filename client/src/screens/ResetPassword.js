@@ -109,7 +109,11 @@ const Reset = () => {
 					}
 				})
 				.catch((err) => {
-					console.log(err);
+					// SECURITY (VULN-07): reset requests are rate limited and
+					// now reply with 429 once the budget is spent.
+					setSuccessMsg(false);
+					setEmailCheck(false);
+					setErrorMsg(true);
 				});
 		} else {
 			setErrorMsg(false);

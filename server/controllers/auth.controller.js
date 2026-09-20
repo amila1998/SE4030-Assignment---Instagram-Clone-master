@@ -44,7 +44,7 @@ exports.signup = (req, res) => {
 	}
 	// Verifying if one of the fields is Empty
 	if (!name || !password || !email) {
-		return res.json({ error: "Please submit all required field" });
+		return res.status(400).json({ error: "Please submit all required field" });
 	}
 	// SECURITY (VULN-06): the application previously accepted any non-empty
 	// password, including a single character.
@@ -57,7 +57,7 @@ exports.signup = (req, res) => {
 		.then((savedUser) => {
 			// Verify if the user exist in the DB
 			if (savedUser) {
-				return res.json({ error: "This Email Is Already Used !" });
+				return res.status(409).json({ error: "This Email Is Already Used !" });
 			}
 			// We Hash the pwd before save into DB, more the number is high more it's more secure
 			bcrypt.hash(password, BCRYPT_COST).then((hashedPwd) => {
@@ -101,7 +101,7 @@ exports.signin = (req, res) => {
 	}
 	// Verification for an empty field
 	if (!email || !password) {
-		return res.json({ error: "Please provide Email or Password" });
+		return res.status(400).json({ error: "Please provide Email or Password" });
 	}
 	// Check if email exist in our DB
 	// `Password` is `select: false` on the schema (VULN-02), so it has to be
@@ -110,7 +110,7 @@ exports.signin = (req, res) => {
 		.select("+Password")
 		.then((savedUser) => {
 			if (!savedUser) {
-				return res.json({ error: "Invalid Email or Password" });
+				return res.status(401).json({ error: "Invalid Email or Password" });
 			}
 			bcrypt.compare(password, savedUser.Password).then((doMatch) => {
 				if (doMatch) {
@@ -126,7 +126,7 @@ exports.signin = (req, res) => {
 					const { _id, Name, Email, Followers, Following, Bookmarks } = savedUser;
 					res.json({ token, user: { _id, Name, Email, Followers, Following, Bookmarks } });
 				} else {
-					return res.json({
+					return res.status(401).json({
 						error: "Invalid Email or Password",
 					});
 				}

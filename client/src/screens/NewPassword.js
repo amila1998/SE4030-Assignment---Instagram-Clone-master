@@ -92,7 +92,10 @@ const NewPass = () => {
 				}
 			})
 			.catch((err) => {
-				console.log(err);
+				// SECURITY (VULN-07): the API now returns 400/422/429 rather
+				// than 200 with an error field.
+				setSuccessMsg(false);
+				setErrorMsg(true);
 			});
 	};
 	return (

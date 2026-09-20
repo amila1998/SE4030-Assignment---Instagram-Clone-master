@@ -1,0 +1,56 @@
+
+VULN-06  Password policy
+------------------------
+  FAIL  [VULN-06] single-character password is rejected
+        got: {"error":"Too many attempts from this IP. Please try again in 15 minutes."}
+  FAIL  [VULN-06] policy-compliant password is accepted
+        got: {"error":"Too many attempts from this IP. Please try again in 15 minutes."}
+
+VULN-03  NoSQL operator injection
+---------------------------------
+  FAIL  [VULN-03] signin with {$ne:null} email is rejected
+        got: {"error":"Too many attempts from this IP. Please try again in 15 minutes."}
+  FAIL  [VULN-03] new-pwd with {$ne:null} token is rejected
+        got: {"error":"Too many attempts from this IP. Please try again in 15 minutes."}
+
+VULN-05  JWT hardening
+----------------------
+  FAIL  [VULN-05] valid credentials return a token
+        got: {"error":"Too many attempts from this IP. Please try again in 15 minutes."}
+  PASS  [VULN-05] a forged token is rejected with 401
+  PASS  [VULN-05] a missing Authorization header is rejected
+
+VULN-01  Authentication on user search
+--------------------------------------
+  PASS  [VULN-01] user search without a token returns 401
+
+VULN-04  Regex injection in user search
+---------------------------------------
+
+VULN-02  Reset-token exposure
+-----------------------------
+
+VULN-06  Account enumeration on password reset
+----------------------------------------------
+  PASS  [VULN-06] known and unknown addresses get identical responses
+
+VULN-08  Upload validation and input bounds
+-------------------------------------------
+
+VULN-09  Security headers and error handling
+--------------------------------------------
+  PASS  [VULN-09] X-Powered-By is not disclosed
+  PASS  [VULN-09] Content-Security-Policy is set
+  PASS  [VULN-09] X-Content-Type-Options is nosniff
+  PASS  [VULN-09] X-Frame-Options / frame-ancestors set (clickjacking)
+  PASS  [VULN-09] Referrer-Policy is set
+  PASS  [VULN-09] unknown route returns JSON 404, not an HTML stack
+
+VULN-07  Rate limiting
+----------------------
+  PASS  [VULN-07] repeated failed logins are throttled (429 after 1 attempts)
+
+============================================================
+RESULT: 11 passed, 5 failed
+============================================================
+Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 76

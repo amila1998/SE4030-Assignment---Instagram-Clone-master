@@ -58,6 +58,9 @@ const Signup = () => {
 	const [email, setEmail] = useState("");
 	const [formatValidation, setFormatValidation] = useState(false);
 	const [authValidation, setAuthValidation] = useState(false);
+	// SECURITY (VULN-07): show the server's own validation message (password
+	// policy, duplicate email, rate limit) rather than a single fixed string.
+	const [authMessage, setAuthMessage] = useState("This Email is already token — check it out!");
 	const [confirmValidation, setConfirmValidation] = useState(false);
 
 	const timerRef = useRef();
@@ -108,7 +111,14 @@ const Signup = () => {
 					}
 				})
 				.catch((err) => {
-					console.log(err);
+					// SECURITY (VULN-07): surface the server's validation and
+					// rate-limit messages, which now arrive as 400/409/429.
+					setFormatValidation(false);
+					setAuthValidation(true);
+					setAuthMessage(
+						(err.response && err.response.data && err.response.data.error) ||
+							"Unable to create the account."
+					);
 				});
 		} else {
 			setAuthValidation(false);
@@ -131,7 +141,7 @@ const Signup = () => {
 			{/*  Check the if the Email already Exist */}
 			{authValidation ? (
 				<Alert variant="outlined" severity="error">
-					This Email is already token — check it out!
+					{authMessage}
 				</Alert>
 			) : null}
 			{/* Success notification */}
