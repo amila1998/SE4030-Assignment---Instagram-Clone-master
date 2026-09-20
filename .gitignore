@@ -9,6 +9,13 @@ node_modules/
 .env.local
 *.pem
 
+# ...but client/.env holds NO secrets. It carries build-time settings that
+# must ship with the repo: INLINE_RUNTIME_CHUNK=false, without which the
+# strict Content-Security-Policy in client/public/index.html blocks CRA's
+# inlined webpack runtime and the app renders a blank page. Anything secret
+# belongs in client/.env.local, which stays ignored above.
+!client/.env
+
 # Build output
 build/
 dist/

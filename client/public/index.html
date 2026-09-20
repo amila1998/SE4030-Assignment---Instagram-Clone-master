@@ -21,13 +21,50 @@
       work correctly both with client-side routing and a non-root public URL.
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
+		<!--
+			SECURITY (VULN-12): Content Security Policy for the SPA shell.
+
+			The API sets its own CSP (VULN-09), but that header only covers
+			responses from the API origin. The static client is served from a
+			different origin and needs its own policy, otherwise an injected
+			<script> in the page would run unrestricted.
+
+			  script-src 'self'   only bundles served from this origin run.
+			                      This requires INLINE_RUNTIME_CHUNK=false
+			                      (set in client/.env), because CRA otherwise
+			                      inlines its webpack runtime into this file
+			                      and that inline script would be blocked.
+			  style-src           'unsafe-inline' is unavoidable here:
+			                      Material-UI v4 injects component styles at
+			                      runtime via JSS. Recorded as residual risk.
+			  img-src data:       post images are rendered as data: URIs.
+			                      Safe because uploads are content-sniffed
+			                      and restricted to real image types (VULN-08).
+			  connect-src         the API origin; adjust when deploying.
+			  object-src 'none'   no Flash/embed legacy plugin content.
+			  base-uri 'self'     stops <base> tag injection retargeting
+			                      every relative URL on the page.
+
+			Note: frame-ancestors is ignored in a <meta> policy and must be
+			sent as a real header by whatever serves this build. The report
+			records this.
+		-->
+		<meta
+			http-equiv="Content-Security-Policy"
+			content="default-src 'self';
+			         script-src 'self';
+			         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+			         font-src 'self' https://fonts.gstatic.com data:;
+			         img-src 'self' data: blob: https://source.unsplash.com https://images.unsplash.com;
+			         connect-src 'self' http://localhost:5000;
+			         object-src 'none';
+			         base-uri 'self';
+			         form-action 'self'"
+		/>
+		<meta name="referrer" content="no-referrer" />
+
 		<!-- Compiled and minified CSS -->
 		<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
-		<!--<link
-			rel="stylesheet"
-			href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css"
-		/>
-		-->
 		<title>Instagram Clone App</title>
 	</head>
 	<body>
