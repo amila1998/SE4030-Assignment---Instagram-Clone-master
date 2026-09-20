@@ -183,14 +183,49 @@ exports.updatePicture = (req, res) => {
 	);
 };
 
+// SECURITY (VULN-04): escape every character that carries meaning inside a
+// regular expression, so caller input is matched literally instead of being
+// executed as a pattern.
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// An empty or absent pattern used to match every user in the collection.
+// Require a minimum prefix length so that search cannot be used to walk the
+// entire user base, and cap the length so the generated regex stays small.
+const MIN_SEARCH_LENGTH = 3;
+const MAX_SEARCH_LENGTH = 64;
+const MAX_SEARCH_RESULTS = 20;
+
 exports.userSearch = (req, res) => {
-	let pattern = new RegExp("^" + req.body.pattern);
-	User.find({ Email: { $regex: pattern } })
+	const { pattern } = req.body;
+
+	// Reject non-strings outright (NoSQL operator injection guard, VULN-03).
+	if (typeof pattern !== "string") {
+		return res.status(400).json({ error: "Search pattern must be a string." });
+	}
+
+	const term = pattern.trim();
+	if (term.length < MIN_SEARCH_LENGTH) {
+		return res
+			.status(400)
+			.json({ error: `Search pattern must be at least ${MIN_SEARCH_LENGTH} characters.` });
+	}
+	if (term.length > MAX_SEARCH_LENGTH) {
+		return res.status(400).json({ error: "Search pattern is too long." });
+	}
+
+	// Anchored, fully escaped, case-insensitive prefix match. Because the
+	// input is escaped it can no longer contain quantifiers, so catastrophic
+	// backtracking is not reachable.
+	const safePattern = new RegExp("^" + escapeRegExp(term), "i");
+
+	User.find({ Email: { $regex: safePattern } })
 		.select("_id Email Name")
+		.limit(MAX_SEARCH_RESULTS)
 		.then((user) => {
 			res.json({ user });
 		})
 		.catch((err) => {
-			console.log(err);
+			console.error("[userSearch]", err);
+			return res.status(500).json({ error: "Unable to complete the search." });
 		});
 };
