@@ -1,22 +1,21 @@
 
 VULN-06  Password policy
 ------------------------
-  FAIL  [VULN-06] single-character password is rejected
-        got: {"error":"Too many attempts from this IP. Please try again in 15 minutes."}
-  FAIL  [VULN-06] policy-compliant password is accepted
-        got: {"error":"Too many attempts from this IP. Please try again in 15 minutes."}
+  PASS  [VULN-06] single-character password is rejected
+  PASS  [VULN-06] policy-compliant password is accepted
 
 VULN-03  NoSQL operator injection
 ---------------------------------
-  FAIL  [VULN-03] signin with {$ne:null} email is rejected
-        got: {"error":"Too many attempts from this IP. Please try again in 15 minutes."}
-  FAIL  [VULN-03] new-pwd with {$ne:null} token is rejected
-        got: {"error":"Too many attempts from this IP. Please try again in 15 minutes."}
+  PASS  [VULN-03] signin with {$ne:null} email is rejected
+  PASS  [VULN-03] new-pwd with {$ne:null} token is rejected
 
 VULN-05  JWT hardening
 ----------------------
-  FAIL  [VULN-05] valid credentials return a token
-        got: {"error":"Too many attempts from this IP. Please try again in 15 minutes."}
+  PASS  [VULN-05] valid credentials return a token
+  PASS  [VULN-05] token carries an exp claim
+  PASS  [VULN-05] token algorithm is HS256
+  PASS  [VULN-05] token carries the expected issuer
+  PASS  [VULN-05] token carries the expected audience
   PASS  [VULN-05] a forged token is rejected with 401
   PASS  [VULN-05] a missing Authorization header is rejected
 
@@ -26,9 +25,14 @@ VULN-01  Authentication on user search
 
 VULN-04  Regex injection in user search
 ---------------------------------------
+  PASS  [VULN-04] wildcard pattern '.*probe' is matched literally, not as a regex
+  PASS  [VULN-04] single-character search is rejected
+  PASS  [VULN-04] legitimate prefix search still works
 
 VULN-02  Reset-token exposure
 -----------------------------
+  PASS  [VULN-02] GET /user/:id does not expose ResetToken
+  PASS  [VULN-02] GET /user/:id does not expose Password
 
 VULN-06  Account enumeration on password reset
 ----------------------------------------------
@@ -36,6 +40,10 @@ VULN-06  Account enumeration on password reset
 
 VULN-08  Upload validation and input bounds
 -------------------------------------------
+  PASS  [VULN-08] HTML bytes declared as image/png are rejected
+  PASS  [VULN-08] SVG upload is rejected
+  PASS  [VULN-08] over-long title is rejected
+  PASS  [VULN-08] malformed ObjectId is rejected with 400
 
 VULN-09  Security headers and error handling
 --------------------------------------------
@@ -45,12 +53,12 @@ VULN-09  Security headers and error handling
   PASS  [VULN-09] X-Frame-Options / frame-ancestors set (clickjacking)
   PASS  [VULN-09] Referrer-Policy is set
   PASS  [VULN-09] unknown route returns JSON 404, not an HTML stack
+  PASS  [VULN-09] malformed delete id returns 400 and does not hang
 
 VULN-07  Rate limiting
 ----------------------
-  PASS  [VULN-07] repeated failed logins are throttled (429 after 1 attempts)
+  PASS  [VULN-07] repeated failed logins are throttled (429 after 8 attempts)
 
 ============================================================
-RESULT: 11 passed, 5 failed
+RESULT: 30 passed, 0 failed
 ============================================================
-Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 76

@@ -285,3 +285,16 @@ run().catch((err) => {
 	console.error("Verification run failed:", err);
 	process.exit(1);
 });
+
+/**
+ * NOTE ON RE-RUNNING
+ *
+ * The rate-limit check at the end deliberately exhausts the auth limiter's
+ * budget (10 failed attempts per 15 minutes, keyed on client IP). A second
+ * run inside that window therefore starts already throttled and will report
+ * failures for checks that are in fact working.
+ *
+ * Restart the API before re-running, which resets the in-memory counters:
+ *   1. stop the server, then `npm start` again
+ *   2. node security/verify-fixes.js
+ */
