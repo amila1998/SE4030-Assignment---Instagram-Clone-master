@@ -13,6 +13,7 @@ const jwt = require("jsonwebtoken");
 // sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 const User = require("../models/user.model");
+const { signOptions } = require("../config/jwt.config");
 
 // SignUp Controller
 exports.signup = (req, res) => {
@@ -89,8 +90,14 @@ exports.signin = (req, res) => {
 			}
 			bcrypt.compare(password, savedUser.Password).then((doMatch) => {
 				if (doMatch) {
-					// we will generate the token based on the ID of user
-					const token = jwt.sign({ _id: savedUser._id }, process.env.JWT_SECRET);
+					// SECURITY (VULN-05): sign with an explicit algorithm, a short
+					// expiry and issuer/audience binding. Previously this call
+					// passed no options at all, minting tokens that never expired.
+					const token = jwt.sign(
+						{ _id: savedUser._id },
+						process.env.JWT_SECRET,
+						signOptions
+					);
 					// retrieve the user info details and send it to the front
 					const { _id, Name, Email, Followers, Following, Bookmarks } = savedUser;
 					res.json({ token, user: { _id, Name, Email, Followers, Following, Bookmarks } });

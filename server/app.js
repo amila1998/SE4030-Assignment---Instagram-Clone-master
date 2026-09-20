@@ -21,6 +21,12 @@ const connectDB = require("./config/db.config");
 // Gives us access to variables set in the .env file via `process.env.VARIABLE_NAME` syntax
 require("dotenv").config();
 
+// SECURITY (VULN-05): refuse to start with a missing, placeholder or
+// low-entropy JWT signing key. Failing at boot is far safer than discovering
+// at first login that every token in circulation is forgeable.
+const { assertSecretIsStrong } = require("./config/jwt.config");
+assertSecretIsStrong();
+
 // Connection to DB
 connectDB();
 
