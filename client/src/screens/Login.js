@@ -9,7 +9,7 @@ import React, { useState, useContext } from "react";
 import { Link, useHistory } from "react-router-dom";
 import AuthenticationContext from "../contexts/auth/Auth.context";
 import { FETCH_USER_DATA } from "../contexts/types.js";
-import { LOGIN_URL } from "../config/constants";
+import { LOGIN_URL, GOOGLE_AUTH_URL } from "../config/constants";
 import Copyright from "../components/Copyight";
 import { EmailRegex } from "../utils/regex";
 import axios from "axios";
@@ -23,6 +23,9 @@ import Typography from "@material-ui/core/Typography";
 import { makeStyles } from "@material-ui/core/styles";
 import Container from "@material-ui/core/Container";
 import Alert from "@material-ui/lab/Alert";
+import Divider from "@material-ui/core/Divider";
+// OAUTH: Google mark for the sign-in button (react-icons is already a dep).
+import { FcGoogle } from "react-icons/fc";
 
 // General Styles
 const useStyles = makeStyles((theme) => ({
@@ -50,6 +53,13 @@ const useStyles = makeStyles((theme) => ({
 	},
 	submit: {
 		margin: theme.spacing(2, 0, 2),
+	},
+	divider: {
+		margin: theme.spacing(1, 0, 2),
+	},
+	googleButton: {
+		margin: theme.spacing(0, 0, 2),
+		textTransform: "none",
 	},
 }));
 
@@ -79,6 +89,13 @@ const Login = () => {
 			default:
 				break;
 		}
+	};
+
+	// OAUTH: a full-page navigation, not an XHR. The browser has to land on
+	// Google's consent screen, and the httpOnly `state` cookie the API sets
+	// must be stored by the browser as part of that top-level navigation.
+	const handleGoogleSignIn = () => {
+		window.location.href = GOOGLE_AUTH_URL;
 	};
 
 	const handlePostData = () => {
@@ -179,6 +196,19 @@ const Login = () => {
 							>
 								Sign In
 							</Button>
+							<Divider className={classes.divider} />
+
+							{/* OAUTH: sign in with Google (Authorization Code + PKCE) */}
+							<Button
+								fullWidth
+								variant="outlined"
+								className={classes.googleButton}
+								startIcon={<FcGoogle />}
+								onClick={handleGoogleSignIn}
+							>
+								Sign in with Google
+							</Button>
+
 							<Grid container>
 								<Grid item xs>
 									<Link to="/reset" style={{ textDecoration: "none" }}>

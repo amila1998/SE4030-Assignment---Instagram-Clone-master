@@ -11,6 +11,8 @@ const cors = require("cors");
 const compression = require("compression");
 const helmet = require("helmet");
 const mongoSanitize = require("express-mongo-sanitize");
+// OAUTH: needed to read the httpOnly `state` cookie on the Google callback.
+const cookieParser = require("cookie-parser");
 
 const connectDB = require("./config/db.config");
 
@@ -113,6 +115,10 @@ app.use(
 app.use(express.json({ limit: "8mb" }));
 app.use(express.urlencoded({ extended: true, limit: "8mb" }));
 
+// OAUTH: parses the short-lived, httpOnly `state` cookie used to bind the
+// Google callback to the browser that started the flow (CSRF defence).
+app.use(cookieParser());
+
 // SECURITY (VULN-03): strip any key beginning with "$" or containing "."
 // from req.body / req.params / req.query before it can reach a Mongoose
 // query. This is the application-wide backstop against NoSQL operator
@@ -158,6 +164,10 @@ app.use(globalLimiter);
  * -------------- ROUTES ----------------
  */
 require("./routes/auth.route")(app);
+// OAUTH: Google sign-in (Authorization Code + PKCE). Mounted alongside the
+// existing email/password routes rather than replacing them, so accounts
+// created before Google sign-in existed continue to work.
+require("./routes/oauth.route")(app);
 require("./routes/post.route")(app);
 require("./routes/user.route")(app);
 

@@ -1,0 +1,43 @@
+
+Authorization request (GET /auth/google)
+----------------------------------------
+  PASS  returns a redirect
+  PASS  redirects to Google's authorization endpoint
+  PASS  response_type is 'code' (Authorization Code grant)
+  PASS  code_challenge_method is S256 (PKCE)
+  PASS  a code_challenge is present
+  PASS  a state parameter is present
+  PASS  openid scope is requested (OIDC)
+  PASS  email scope is requested
+  PASS  redirect_uri is registered and explicit
+  PASS  code_challenge is a 43-char base64url SHA-256 digest
+
+State cookie (CSRF binding)
+---------------------------
+  PASS  a state cookie is set
+  PASS  state cookie is HttpOnly
+  PASS  state cookie is SameSite=Lax
+  PASS  state cookie value matches the state parameter
+
+Callback CSRF and replay defences
+---------------------------------
+  PASS  callback without the state cookie is rejected
+  PASS  callback with a mismatched state is rejected
+  PASS  callback with an unknown authorization request is rejected
+  PASS  consent denial is passed back to the client as access_denied
+
+Exchange endpoint (POST /auth/google/exchange)
+----------------------------------------------
+  PASS  an unknown exchange code is rejected with 400
+  PASS  a missing exchange code is rejected with 400
+  PASS  a non-string exchange code is rejected with 400
+
+Freshness
+---------
+  PASS  a second request uses a different state
+  PASS  a second request uses a different code_challenge
+
+============================================================
+RESULT: 23 passed, 0 failed
+============================================================
+Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 76

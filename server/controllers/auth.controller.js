@@ -112,6 +112,14 @@ exports.signin = (req, res) => {
 			if (!savedUser) {
 				return res.status(401).json({ error: "Invalid Email or Password" });
 			}
+			// OAUTH: a Google-only account has no local password. Calling
+			// bcrypt.compare with an undefined hash would throw, so reject
+			// here. The message stays identical to a wrong-password failure
+			// so this endpoint does not disclose which sign-in method an
+			// address uses - that would be an enumeration oracle of its own.
+			if (!savedUser.Password) {
+				return res.status(401).json({ error: "Invalid Email or Password" });
+			}
 			bcrypt.compare(password, savedUser.Password).then((doMatch) => {
 				if (doMatch) {
 					// SECURITY (VULN-05): sign with an explicit algorithm, a short

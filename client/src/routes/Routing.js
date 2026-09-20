@@ -14,6 +14,8 @@ import UserProfile from "../screens/UserProfile";
 import SubscribePost from "../screens/SubscribePosts";
 import Reset from "../screens/ResetPassword.js";
 import NewPass from "../screens/NewPassword.js";
+// OAUTH: landing route for the Google sign-in redirect.
+import OAuthCallback from "../screens/OAuthCallback.js";
 
 const Routing = () => {
 	const { state } = useContext(AuthContext);
@@ -31,6 +33,9 @@ const Routing = () => {
 				<Route exact path="/signup" component={Signup} />
 				<Route exact path="/reset" component={Reset} />
 				<Route exact path="/reset/:token" component={NewPass} />
+				{/* OAUTH: must be public - the user is not authenticated yet
+				    when Google redirects them back here. */}
+				<Route exact path="/oauth/callback" component={OAuthCallback} />
 
 				{/* Separate the protected routes from public ones */}
 				<ProtectedRoute exact path="/" component={SubscribePost} />
