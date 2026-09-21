@@ -73,7 +73,7 @@ Full analysis of each — including impact, exploit path, fix and residual risk
 |---|---|---|
 | Server dependency advisories | 32 (2 critical, 17 high) | **0** |
 | Client dependency advisories | 200 (18 critical, 59 high) | **26** — all build-toolchain only, none shipped |
-| Custom Semgrep findings | 20 | **0** |
+| Custom Semgrep findings | 17 | **0** |
 | Runtime security checks | — | **30 / 30 passing** |
 | OAuth flow checks | — | **23 / 23 passing** |
 

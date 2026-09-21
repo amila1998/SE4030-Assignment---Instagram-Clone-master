@@ -10,7 +10,30 @@
 # Run:
 #   docker run --rm -v "<repo>:/src" semgrep/semgrep \
 #     semgrep --config /src/security/semgrep-rules.yml \
-#     --exclude=node_modules --no-git-ignore /src
+#     --exclude=node_modules --exclude=build --no-git-ignore /src
+#
+# TUNING NOTE
+# -----------
+# These rules were written against the VULNERABLE code, where they produced
+# 20 true positives. Re-running them against the FIXED code surfaced 5
+# findings that were all false positives - artefacts of how the rules were
+# expressed, not defects in the code:
+#
+#   * `nosql-operator-injection-from-request` flagged `req.params.id`, which
+#     comes from a URL path segment and is therefore always a string. The
+#     rule now covers req.body and req.query only.
+#   * `jwt-verify-without-algorithm-pinning` flagged a call that passes its
+#     options by reference (`jwt.verify(t, s, verifyOptions)`) because the
+#     exclusion only recognised an inline object literal. The rule now
+#     matches the no-options shapes directly instead.
+#   * `secret-schema-field-not-excluded-by-default` flagged fields that
+#     already declare `select: false`, because Semgrep matches object
+#     patterns partially. An explicit `pattern-not` now excludes them.
+#
+# A rule that fires on its own remediation trains people to ignore it, so
+# the tuning is part of the fix rather than an afterthought. Both the
+# pre-fix (20 findings) and post-fix (0 findings) scans are kept in
+# security/reports/.
 ####################################################################
 
 rules:
@@ -22,15 +45,21 @@ rules:
   # ---------------------------------------------------------------
   - id: nosql-operator-injection-from-request
     patterns:
+      # Only req.body and req.query are considered. A value from req.params
+      # comes from a URL PATH SEGMENT and is therefore always a string - an
+      # object cannot be expressed there - so it is not an operator-injection
+      # vector. req.query can be ({"?a[$ne]=1"}), so it is included.
+      # Restricting the rule this way removed two false positives without
+      # weakening it; see the tuning note at the top of this file.
       - pattern-either:
           - pattern: |
               $MODEL.findOne({..., $FIELD: req.body.$PROP, ...})
           - pattern: |
               $MODEL.find({..., $FIELD: req.body.$PROP, ...})
           - pattern: |
-              $MODEL.findOne({..., $FIELD: req.params.$PROP, ...})
+              $MODEL.findOne({..., $FIELD: req.query.$PROP, ...})
           - pattern: |
-              $MODEL.find({..., $FIELD: req.params.$PROP, ...})
+              $MODEL.find({..., $FIELD: req.query.$PROP, ...})
     message: >-
       Request-controlled value flows into a Mongoose query filter without
       being coerced to a primitive. A client can submit an object such as
@@ -100,13 +129,21 @@ rules:
   # ---------------------------------------------------------------
   - id: jwt-verify-without-algorithm-pinning
     patterns:
+      # Match precisely the shapes that pass NO options object: either two
+      # arguments, or a third argument that is a callback rather than options.
+      #
+      # The earlier formulation matched any 3-argument call and excluded only
+      # an INLINE object literal containing `algorithms`. That produced a
+      # false positive once the options were extracted into a shared config
+      # module and passed by reference (`jwt.verify(t, s, verifyOptions)`) -
+      # which is the better practice the rule is meant to encourage.
       - pattern-either:
           - pattern: |
-              jwt.verify($TOKEN, $SECRET, $CB)
-          - pattern: |
               jwt.verify($TOKEN, $SECRET)
-      - pattern-not: |
-          jwt.verify($TOKEN, $SECRET, {..., algorithms: [...], ...}, ...)
+          - pattern: |
+              jwt.verify($TOKEN, $SECRET, function (...) { ... })
+          - pattern: |
+              jwt.verify($TOKEN, $SECRET, (...) => { ... })
     message: >-
       jwt.verify() is called without pinning `algorithms`. Pin the expected
       algorithm (e.g. algorithms ["HS256"]) to prevent algorithm-confusion
@@ -174,6 +211,12 @@ rules:
     patterns:
       - pattern: |
           $FIELD: { type: String }
+      # Semgrep matches object patterns partially, so the pattern above also
+      # matches a field that ALREADY declares `select: false`. Exclude those
+      # explicitly, otherwise the rule keeps firing on the very fix it asks
+      # for.
+      - pattern-not: |
+          $FIELD: { ..., select: false, ... }
       - metavariable-regex:
           metavariable: $FIELD
           regex: ^(ResetToken|Password|RefreshToken|Secret|ApiKey)$

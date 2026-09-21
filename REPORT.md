@@ -47,7 +47,7 @@ assumed correct from reading the diff.
 |---|---:|---:|
 | Server dependency advisories | 32 (2 critical, 17 high) | **0** |
 | Client dependency advisories | 200 (18 critical, 59 high) | **26** (build-toolchain only) |
-| Custom Semgrep findings | 20 | **0** |
+| Custom Semgrep findings | 17 | **0** |
 | Runtime security checks passing | — | **30 / 30** |
 | OAuth flow checks passing | — | **23 / 23** |
 
@@ -90,7 +90,7 @@ were layered.
 |---|---|---|
 | **SCA** (white-box) | `npm audit` | VULN-10, VULN-12 — 232 advisories across both trees |
 | **SAST** (white-box) | Semgrep — community rulesets | **Nothing (0 findings)** |
-| **SAST** (white-box) | Semgrep — **custom ruleset** | VULN-01 to VULN-06, VULN-09 — 20 findings |
+| **SAST** (white-box) | Semgrep — **custom ruleset** | VULN-01 to VULN-06, VULN-09 — 17 findings |
 | **Manual review** (white-box) | — | VULN-06, VULN-07, VULN-08 |
 | **Runtime probing** (black-box) | `verify-fixes.js`, `curl` | VULN-11, and confirmation of all fixes |
 
@@ -110,21 +110,51 @@ an allow-list. No generic rule models "this Express route has one fewer
 argument than every other route in the file".
 
 So a custom ruleset was written (`security/semgrep-rules.yml`, 7 rules)
-encoding the specific properties this codebase should hold. It produced
-**20 findings** — the same code, the same tool, different rules.
+encoding the specific properties this codebase should hold — the same code,
+the same tool, different rules:
 
-| Rule | Findings |
+| Rule | Findings on the vulnerable baseline |
 |---|---:|
-| `nosql-operator-injection-from-request` | 4 |
+| `raw-error-object-in-response` | 10 |
+| `secret-schema-field-not-excluded-by-default` | 2 |
+| `nosql-operator-injection-from-request` | 1 |
 | `express-route-missing-auth-middleware` | 1 |
 | `jwt-signed-without-expiry` | 1 |
 | `jwt-verify-without-algorithm-pinning` | 1 |
-| `raw-error-object-in-response` | 6 |
 | `regex-built-from-user-input` | 1 |
-| `secret-schema-field-not-excluded-by-default` | 2 |
+| **Total** | **17** |
 
 The negative result is kept in `security/reports/semgrep-community-before.txt`
 deliberately, as evidence for this conclusion.
+
+### 2.2 Tuning the rules — and why the count changed
+
+The first version of these rules reported **20** findings. Re-running them
+against the *fixed* code surfaced 5 findings that turned out to be **false
+positives** — artefacts of how the rules were written, not defects:
+
+| False positive | Cause |
+|---|---|
+| `req.params.id` flagged as injectable | A URL **path segment** is always a string — an object cannot be expressed there — so `req.params` is not an operator-injection vector. `req.query` is (`?a[$ne]=1`), and remains in scope. |
+| `jwt.verify(t, s, verifyOptions)` flagged as unpinned | The exclusion only recognised an **inline object literal**. Extracting the options into a shared config module — the better practice the rule exists to encourage — made the rule fire on its own remediation. |
+| `Password: { …, select: false }` still flagged | Semgrep matches object patterns **partially**, so the pattern also matched fields that already carried the fix. |
+
+The rules were corrected, which is why the baseline figure in this report is
+**17** rather than 20: three of the original hits were `req.params`
+non-issues, and the other two false positives were on the *fixed* code.
+
+This was then regression-tested rather than assumed: the **tuned** rules were
+re-run against the original baseline commit in a separate `git worktree` and
+still produce **17 findings with all seven rules firing**, confirming that
+removing the false positives did not blind any rule to the real defects.
+
+> A rule that fires on its own remediation trains people to ignore it. Tuning
+> out false positives is therefore part of the fix, not housekeeping — an
+> alerting channel that cries wolf is worse than no channel, because it
+> consumes attention and teaches dismissal.
+
+**Result on the fixed code: 0 findings**
+(`security/reports/semgrep-custom-after.txt`).
 
 ---
 
@@ -865,7 +895,8 @@ the boundaries are.
 |---|---|
 | `security/semgrep-rules.yml` | Custom Semgrep ruleset (7 rules) |
 | `security/reports/semgrep-community-before.txt` | Community rulesets: 0 findings |
-| `security/reports/semgrep-custom-before.json` | Custom rules: 20 findings |
+| `security/reports/semgrep-custom-before.json` | Custom rules: 20 findings (pre-tuning) |
+| `security/reports/semgrep-custom-after.txt` | Custom rules after fixes + tuning: **0 findings** |
 | `security/reports/npm-audit-server-before.*` | 32 advisories |
 | `security/reports/npm-audit-server-after.txt` | 0 advisories |
 | `security/reports/npm-audit-client-before.*` | 200 advisories |
