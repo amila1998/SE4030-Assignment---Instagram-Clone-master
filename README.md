@@ -12,10 +12,10 @@ vulnerabilities, and adding an OAuth 2.0 / OpenID Connect sign-in flow.
 
 | Field | Value |
 |---|---|
-| **Member name** | `<<YOUR FULL NAME>>` |
+| **Member name** | Amila Devin Senarathne |
 | **Index number** | `<<YOUR INDEX NUMBER>>` |
 | **GitHub — original project** | https://github.com/TheLordA/Instagram-Clone |
-| **GitHub — modified project** | `<<URL OF YOUR NEW REPOSITORY>>` |
+| **GitHub — modified project** | https://github.com/amila1998/SE4030-Assignment---Instagram-Clone-master |
 | **YouTube video (≤ 20 min)** | `<<YOUTUBE LINK>>` |
 
 ### About the original project

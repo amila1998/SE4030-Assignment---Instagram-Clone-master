@@ -4,10 +4,10 @@
 
 | | |
 |---|---|
-| **Student** | `<<YOUR FULL NAME>>` — `<<YOUR INDEX NUMBER>>` |
+| **Student** | Amila Devin Senarathne — `<<YOUR INDEX NUMBER>>` |
 | **Application** | Instagram-Clone (MERN Stack) by Anass Ferrak ("TheLordA") |
 | **Original repository** | <https://github.com/TheLordA/Instagram-Clone> |
-| **Modified repository** | `<<URL OF YOUR NEW REPOSITORY>>` |
+| **Modified repository** | <https://github.com/amila1998/SE4030-Assignment---Instagram-Clone-master> |
 | **Last upstream commit** | September 2023 (predates semester start) |
 | **Video** | `<<YOUTUBE LINK>>` |
 
