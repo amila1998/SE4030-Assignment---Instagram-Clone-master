@@ -25,7 +25,7 @@ vulnerabilities, and adding an OAuth 2.0 / OpenID Connect sign-in flow.
 | Name | Instagram-Clone (MERN Stack) |
 | Author | Anass Ferrak ("TheLordA") |
 | Repository | https://github.com/TheLordA/Instagram-Clone |
-| Last upstream commit | September 2023 — **predates the semester start** |
+| Last upstream commit | `ddc1b1e` — **9 March 2022** (semester starts 1 July 2026, so this predates it by over four years) |
 | Licence | ISC |
 | Stack | MongoDB, Express.js, React.js, Node.js |
 

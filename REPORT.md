@@ -8,7 +8,7 @@
 | **Application** | Instagram-Clone (MERN Stack) by Anass Ferrak ("TheLordA") |
 | **Original repository** | <https://github.com/TheLordA/Instagram-Clone> |
 | **Modified repository** | <https://github.com/amila1998/SE4030-Assignment---Instagram-Clone-master> |
-| **Last upstream commit** | September 2023 (predates semester start) |
+| **Last upstream commit** | `ddc1b1e` — 9 March 2022 (predates the 1 July 2026 semester start) |
 | **Video** | `<<YOUTUBE LINK>>` |
 
 ---
@@ -60,7 +60,7 @@ assumed correct from reading the diff.
 | Criterion | Assessment |
 |---|---|
 | Not a teaching-vulnerability app | Correct — a genuine social application with 130+ stars, no planted flaws |
-| Last commit predates semester | September 2023 |
+| Last commit predates semester | Yes — `ddc1b1e`, 9 March 2022, against a 1 July 2026 semester start (see §1.2) |
 | Sufficient scope and complexity | Full-stack MERN: 3 controllers, 17 API endpoints, 2 Mongoose models, 9 React screens, JWT auth, image upload, password reset by email |
 | Improved version not public | No security-hardened fork exists |
 | OAuth is a genuine change | It had only homegrown email/password auth, so adding Google sign-in is a real feature, not a duplicate |
@@ -70,7 +70,38 @@ The vulnerabilities found are **ordinary developer mistakes** — a lower-case
 allow-list was needed. That is precisely what makes the exercise realistic:
 these are the bugs that reach production, not contrived exercises.
 
-### 1.2 Architecture
+### 1.2 Provenance and eligibility
+
+The assignment requires the original project's last commit to predate the
+start of the semester (**1 July 2026**). That was verified against the GitHub
+API rather than assumed:
+
+| Evidence | Value |
+|---|---|
+| Default branch (`master`) tip | `ddc1b1e` |
+| Author date of that commit | **2022-03-09T15:18:47Z** |
+| Newest commit on *any* branch | `14fccf6`, 2022-04-04 (an abandoned Dependabot branch, never merged) |
+| Repository `pushed_at` metadata | 2023-09-24 |
+
+A caution on that last row: the repository's `pushed_at` field reads
+September 2023, but **no commit was authored then**. That timestamp records a
+ref being pushed, not new work; the newest commit object in the repository is
+from April 2022. Quoting `pushed_at` as the "last commit date" would therefore
+be incorrect, so the authored date of the commit actually used is cited
+instead.
+
+The baseline in this repository was confirmed to be that exact upstream
+commit, not an approximation of it:
+
+```
+$ git diff --stat <baseline> upstream/master -- server client
+$                       # empty: byte-identical across both application trees
+```
+
+The margin is **over four years**, so eligibility does not depend on which of
+the dates above a marker prefers.
+
+### 1.3 Architecture
 
 ```
 React SPA (:3000)  ──HTTP + JWT Bearer──▶  Express API (:5000)  ──▶  MongoDB
