@@ -25,3 +25,4 @@ dist/
 npm-debug.log*
 REPORT.html
 /node_modules/
+/SE4030-Submission
